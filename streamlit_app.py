@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -12,10 +11,9 @@ st.set_page_config(
 )
 
 # --- DATA AGGREGATION ---
-# Incorporating all shared datasets: Volume counts, Inflow/Residue, and Vehicle Logistics
 @st.cache_data
 def get_processed_data():
-    # 1. Queue Dynamics (Inflow and Residue)
+    # Queue Dynamics (Inflow and Residue) based on team data
     queue_data = {
         "Time": ["07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45"],
         "Students_Joining": [16, 132, 130, 200, 178, 192, 183, 144, 161, 185, 209, 273, 252, 125],
@@ -23,8 +21,7 @@ def get_processed_data():
     }
     df_queue = pd.DataFrame(queue_data)
     
-    # 2. Vehicle Capacity Reference
-    # Based on: 8=korope, 18=18 pass, 14=14 pass, 15=CNG, 12=12 pass, Marcopolo=~60
+    # Vehicle Capacity Reference
     vehicle_caps = {
         "Korope (8)": 8,
         "12-Passenger": 12,
@@ -39,41 +36,24 @@ def get_processed_data():
 
 df_queue, vehicle_caps = get_processed_data()
 
-# --- CUSTOM CSS ---
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
-
 # --- HEADER SECTION ---
 st.title("🚌 University of Ilorin Park Condition")
 st.markdown("### Software for Probable Park Condition Hints")
-st.info("This tool provides insights into passenger volume and queuing conditions to help students and staff plan their movements.")
+st.write("This tool provides insights into passenger volume and queuing conditions to help students and staff plan their movements.")
 
 # --- SECTION 1: LIVE STATUS & HINTS ---
-# Identifying the current/latest state from the data
 latest_idx = len(df_queue) - 1
 current_residue = df_queue["Residue"].iloc[latest_idx]
 current_time = df_queue["Time"].iloc[latest_idx]
 
-# Logic for "Hints" based on residue density
-if current_residue > 150:
-    status_label = "CRITICAL"
-    status_color = "error"
-    hint_text = "The park is currently over-saturated. Probable wait time exceeds 40 minutes."
-elif current_residue > 70:
-    status_label = "BUSY"
-    status_color = "warning"
-    hint_text = "High volume observed. Large buses (Marcopolo/CNG) are being prioritized for clearing."
-else:
-    status_label = "MODERATE"
-    status_color = "success"
-    hint_text = "Standard movement. Queues are being cleared effectively by the current fleet."
+st.subheader(f"Current Park Hint ({current_time})")
 
-st.subheader(f"Status Hint for {current_time}")
-st.status(f"Current Condition: **{status_label}** — {hint_text}", state=status_color)
+if current_residue > 150:
+    st.error(f"**Condition: CRITICAL** \nHint: The park is currently over-saturated. Probable wait time exceeds 40 minutes.")
+elif current_residue > 70:
+    st.warning(f"**Condition: BUSY** \nHint: High volume observed. Large buses (Marcopolo/CNG) are being prioritized for clearing.")
+else:
+    st.success(f"**Condition: MODERATE** \nHint: Standard movement. Queues are being cleared effectively by the current fleet.")
 
 # --- SECTION 2: VOLUME VISUALIZATION ---
 st.divider()
@@ -101,9 +81,9 @@ with col2:
     st.metric("Peak Inflow", f"{peak_val} Students", delta=f"At {peak_time}")
     
     st.write("**Operational Notes:**")
-    st.caption("- Peak arrival occurs between 09:45 and 10:15.")
-    st.caption("- Marcopolo turnaround time is approximately 18-20 minutes.")
-    st.caption("- Tricycle constant flow: ~15 units (4 passengers each) baseline.")
+    st.write("- Peak arrival occurs between 09:45 and 10:15.")
+    st.write("- Marcopolo turnaround time is approximately 18-20 minutes.")
+    st.write("- Tricycle constant flow: ~15 units (baseline).")
 
 # --- SECTION 3: INTERACTIVE HISTORICAL LOOKUP ---
 st.divider()
@@ -119,7 +99,7 @@ if res_val > 100:
 else:
     prob_hint = "Likelihood of fast boarding is high."
 
-st.write(f"At **{selected_time}**, the recorded residue was **{res_val} people**. {prob_hint}")
+st.info(f"At **{selected_time}**, the recorded residue was **{res_val} people**. {prob_hint}")
 
 # --- SECTION 4: FLEET MIX ---
 with st.expander("View Vehicle Capacity Specifications"):
