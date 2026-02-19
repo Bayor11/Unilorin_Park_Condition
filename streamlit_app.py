@@ -1,151 +1,97 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import plotly.express as px
+import plotly.graph_objects as go
 
-# Set the title and favicon that appear in the Browser's tab bar.
+# Set Page Config
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='UNILORIN Park Condition',
+    page_icon='🚌',
+    layout='wide'
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
-
+# --- DATA PREPARATION ---
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def load_park_data():
+    # 1. Queue Inflow & Residue (From Image Data)
+    queue_data = {
+        "Time": ["07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30"],
+        "Inflow": [16, 132, 130, 200, 178, 192, 183, 144, 161, 185, 209, 273, 252],
+        "Residue": [0, 5, 8, 15, 66, 56, 105, 133, 150, 210, 182, 150, 125] # Estimated from text/images
+    }
+    
+    # 2. Vehicle Capacities
+    capacities = {
+        "Korope": 8, "12-Seater": 12, "14-Seater": 14, 
+        "CNG Bus": 15, "18-Seater": 18, "Medium Bus": 25, "Marcopolo": 60
+    }
+    
+    return pd.DataFrame(queue_data), capacities
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+df_queue, caps = load_park_data()
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# --- UI HEADER ---
+st.title("🚌 UNILORIN Park Condition Monitor")
+st.markdown(f"""
+    **Assignment Goal:** Providing students with hints on park conditions every hour.  
+    *Status based on data collected from 07:20 AM to 11:00 AM.*
+""")
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# --- KPI METRICS ---
+latest_residue = df_queue['Residue'].iloc[-1]
+status = "CRITICAL" if latest_residue > 150 else "BUSY" if latest_residue > 50 else "CLEAR"
+status_color = "red" if status == "CRITICAL" else "orange" if status == "BUSY" else "green"
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Current Queue Residue", f"{latest_residue} People")
+with col2:
+    st.subheader(f"Status: :{status_color}[{status}]")
+with col3:
+    st.metric("Peak Inflow Rate", f"{df_queue['Inflow'].max()} students/15m")
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+st.divider()
 
-    return gdp_df
+# --- VISUALIZATION 1: QUEUE TRENDS ---
+st.header("📈 Queue Accumulation vs. Inflow")
+fig_trend = go.Figure()
+fig_trend.add_trace(go.Scatter(x=df_queue['Time'], y=df_queue['Inflow'], name='Joining Queue', line=dict(color='#3498db', width=3)))
+fig_trend.add_trace(go.Bar(x=df_queue['Time'], y=df_queue['Residue'], name='People Left Behind', marker_color='#e74c3c', opacity=0.6))
 
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+fig_trend.update_layout(
+    xaxis_title="Time of Day",
+    yaxis_title="Number of People",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    hovermode="x unified"
 )
+st.plotly_chart(fig_trend, use_container_width=True)
 
-''
-''
+# --- VISUALIZATION 2: VEHICLE MIX & LOGISTICS ---
+col_left, col_right = st.columns([1, 1])
 
+with col_left:
+    st.header("🚐 Fleet Mix Capacity")
+    fleet_df = pd.DataFrame({
+        "Vehicle": caps.keys(),
+        "Capacity": caps.values()
+    })
+    fig_fleet = px.pie(fleet_df, values='Capacity', names='Vehicle', title='Passenger Capacity per Vehicle Type', hole=0.4)
+    st.plotly_chart(fig_fleet, use_container_width=True)
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+with col_right:
+    st.header("⏱️ Operational Hints")
+    st.info("""
+    **Observations:**
+    - **Fastest Loading:** CNG and Korope (1-2 mins).
+    - **Heavy Lifters:** Marcopolos (Average load time: 18 mins).
+    - **Bottleneck Warning:** Between 09:30 AM and 10:15 AM, the residue peaks above 200. Suggest using alternative transport or arriving earlier.
+    """)
+    
+    # Simple search widget for students
+    st.subheader("Check My Hour")
+    check_time = st.selectbox("Select your travel time:", df_queue['Time'])
+    selected_row = df_queue[df_queue['Time'] == check_time].iloc[0]
+    st.write(f"At {check_time}, expect a backlog of approximately **{selected_row['Residue']} people**.")
 
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+# --- FOOTER ---
+st.caption("Data Source: Student Group Observation Logs | University of Ilorin Park Project")
